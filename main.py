@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from datetime import datetime
 import numpy as np
-import random
+import time
 
 
 def open_data(name):
@@ -82,9 +82,8 @@ def clusterise(in_data):
         counts[in_data[i][3]] += 1 # число точек
     for i in range(0, 16):
         if counts[i] > 0:
-            ret.append([np.median(rpms[i]), np.median(powers[i])])
-            #ret.append([np.median(rpms[i]), np.median(powers[i]), np.var(rpms[i]), np.var(powers[i])])
-        #ret.append([rpms[i] /= counts[i], powers[i] /= counts[i], counts[i]])
+            #ret.append([np.median(rpms[i]), np.median(powers[i])])
+            ret.append([np.median(rpms[i]), np.median(powers[i]), np.var(powers[i]) ** 0.5, i])
     return ret
 
 
@@ -128,7 +127,7 @@ def get_below(rpm, power):
     return np.cross(p2 - p1, p1 - p3) / np.linalg.norm(p2 - p1)
 
 
-def set_states_limits(in_clusters, panes, states):
+def set_states_simple(in_clusters, panes, states):
     u0 = 0
     u1 = 30
     for c in in_clusters:
@@ -143,7 +142,42 @@ def set_states_limits(in_clusters, panes, states):
             states[k] = 1
         else:
             states[k] = 0
+        if c[2] > 100:
+            states[k] = 1
+        if c[2] > 200:
+            states[k] = 2
 
+
+def get_trends(in_clusters_first, in_clusters_last):
+    combo = []
+    trends = []
+    for i in range(0, 16):
+        combo.append([0, 0, 0, 0])
+    for c in in_clusters_first:
+        combo[c[3]][0] = c[1]
+        combo[c[3]][2] = c[0]
+    for c in in_clusters_last:
+        combo[c[3]][1] = c[1]
+        combo[c[3]][3] = c[0]
+    for i in range(0, 16):
+        c = combo[i]
+        if c[0] != 0 and c[1] != 0:
+            d = c[1] - c[0]
+            trends.append([c[0], c[1], c[2], c[3], i])
+            #print("{} {} {} {}".format(i, d, c[0], c[1]))
+    return trends
+
+
+def set_states_trends(trends, panes, states):
+    for t in trends:
+        d = t[1] - t[0]
+        r = (t[2]+t[3])/2
+        k = get_pane(r, panes)
+        if d <= -100:
+            states[k] = 1
+        if d <= -200:
+            states[k] = 2
+    return
 
 # def on_click(event):
 #     p = get_pane(event.xdata)
@@ -152,7 +186,7 @@ def set_states_limits(in_clusters, panes, states):
 #     redraw(fig)
 
 
-def redraw(in_fig, panes, states, num):
+def redraw(in_fig, panes, states, trends, num):
     ax = in_fig.gca()
     plt.grid()
     for pane in panes:
@@ -162,17 +196,26 @@ def redraw(in_fig, panes, states, num):
         plt.axvspan(panes[p], panes[p + 1], color=colors[states[p]], alpha=0.15)
     ax.scatter(even_x, even_y, c='navy', s=4)
     ax.scatter(odd_x, odd_y, c='darkcyan', s=4)
-    ax.scatter(c_x, c_y, c='red', s=12)
+    ax.scatter(c1_x, c1_y, c='darkred', s=12)
+    ax.scatter(c2_x, c2_y, c='red', s=12)
     #line1, = ax.plot(center_x, center_y, c='black')
     #line1.set_dashes([10, 5])
     line2, = ax.plot(bottom_x, bottom_y, c='coral')
     line2.set_dashes([10, 5])
     line3, = ax.plot(top_x, top_y, c='green')
     line3.set_dashes([10, 5])
+    for t in trends:
+        d = t[1] - t[0]
+        # if d <= -100:
+        #     plt.axhspan(t[1], t[0], color=colors[1], alpha=0.15)
+        # if d <= -200:
+        #     plt.axhspan(t[1], t[0], color=colors[2], alpha=0.15)
+        if d <= -100:
+            ax.plot([t[2], t[3]], [t[0], t[1]], c='red', alpha=0.75)
     ax.set_xlabel(u'Частота вращения, об/мин')
     ax.set_ylabel(u'Мощность, кВт')
     mng = plt.get_current_fig_manager()
-    mng.full_screen_toggle()
+    #mng.full_screen_toggle()
     plt.show()
     #in_fig.savefig("grafs/image_{}".format(num))
 
@@ -188,8 +231,10 @@ even_x = []
 even_y = []
 odd_x = []
 odd_y = []
-c_x = []
-c_y = []
+c1_x = []
+c1_y = []
+c2_x = []
+c2_y = []
 
 
 def main(num):
@@ -204,12 +249,18 @@ def main(num):
     records_last = filter_data_date_last(filtered)
     print('Количество записей за последний день: %i' % len(records_last))
     print(datetime.utcfromtimestamp(filtered[len(filtered)-1][0]).date())
-    clusters = clusterise(filtered)
-    panes = get_panes(clusters)
+    clusters_all = clusterise(filtered)
+    clusters_first = clusterise(records_first)
+    clusters_last = clusterise(records_last)
+    #for i in range(0, len(clusters_first)-1):
+    #    print("k {} dp {}".format(i, clusters_first[i][2]))
+    panes = get_panes(clusters_all)
     states = []
     for i in range(0, len(panes)-1):
         states.append(0)
-    set_states_limits(clusters, panes, states)
+    set_states_simple(clusters_all, panes, states)
+    trends = get_trends(clusters_first, clusters_last)
+    set_states_trends(trends, panes, states)
 
     # отображение
     # разделение на чётные и нечётные позиции контроллера
@@ -217,8 +268,10 @@ def main(num):
     even_y.clear()
     odd_x.clear()
     odd_y.clear()
-    c_x.clear()
-    c_y.clear()
+    c1_x.clear()
+    c1_y.clear()
+    c2_x.clear()
+    c2_y.clear()
     for record in filtered:
         if record[3] % 2 == 0:
             even_x.append(record[1])
@@ -227,14 +280,18 @@ def main(num):
             odd_x.append(record[1])
             odd_y.append(record[2])
 
-    for line in clusters:
+    for line in clusters_first:
         if line[0] > 0 and line[1] > 0:
-            c_x.append(line[0])
-            c_y.append(line[1])
+            c1_x.append(line[0])
+            c1_y.append(line[1])
+    for line in clusters_last:
+        if line[0] > 0 and line[1] > 0:
+            c2_x.append(line[0])
+            c2_y.append(line[1])
 
     fig = plt.figure()
     #fig.canvas.mpl_connect('button_press_event', on_click)
-    redraw(fig, panes, states, num)
+    redraw(fig, panes, states, trends, num)
 
 
-main(18)
+main(17)
