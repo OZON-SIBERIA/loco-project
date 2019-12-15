@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import numpy as np
 import time
+import easygui
 
 
 def open_data(name):
@@ -237,8 +238,8 @@ c2_x = []
 c2_y = []
 
 
-def main(num):
-    unfiltered = open_data("lokodata_{}.txt".format(num))
+def main(path):
+    unfiltered = open_data(path)
     print('Количество записей:\n%i' % len(unfiltered))
     filtered = filter_data_kontr(unfiltered)
     #filtered = filter_data_const(filtered1)
@@ -291,7 +292,9 @@ def main(num):
 
     fig = plt.figure()
     #fig.canvas.mpl_connect('button_press_event', on_click)
-    redraw(fig, panes, states, trends, num)
+    redraw(fig, panes, states, trends, 0)
 
 
-main(17)
+path = easygui.fileopenbox()
+if path:
+    main(path)
